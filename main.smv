@@ -1,0 +1,135 @@
+---------------------------------------------------------------------------
+-- Trabalho 2 Metodos Formais                                            --
+---------------------------------------------------------------------------
+
+---------------------------------------------------------------------------
+-- TEMP|IZAD|                                                          --
+---------------------------------------------------------------------------
+
+MODULE temporizador(reset)
+VAR 
+  tempo : 0 .. 3;
+ASSIGN
+  init(tempo) := 0;
+  next(tempo) := 
+    case
+      reset : 0;
+      tempo = 3 : 3;
+      TRUE : tempo + 1;
+    esac;
+DEFINE
+  timeout := tempo = 3;
+
+---------------------------------------------------------------------------
+-- CONTROLAD|                                                           --
+---------------------------------------------------------------------------
+
+MODULE main
+VAR
+  sensor_right : boolean;
+  sensor_left : boolean;
+  sensor_ponte : boolean;
+  sinaleira_right : {vermelho, verde};
+  sinaleira_left : {vermelho, verde};
+  last : {left, right};
+  estado : {inicial, left, right, espera};
+  timer : temporizador(reset);
+DEFINE
+  reset := timer.timeout;
+ASSIGN
+  init(sinaleira_right) := vermelho;
+  init(sinaleira_left)  := vermelho;
+  init(sensor_right) := FALSE;
+  init(sensor_left) := FALSE;
+  init(sensor_ponte) := FALSE;
+  init(estado) := inicial;
+
+  next(estado) := case
+    estado = inicial & sensor_left: left;
+    estado = left & !timer.timeout: left;
+    estado = right & (timer.timeout & !sensor_ponte & sensor_left): left;
+    estado = espera & timer.timeout & ((!sensor_ponte & sensor_left & last = right) | (!sensor_ponte & sensor_left & !sensor_right)): left;
+
+    estado = inicial & sensor_right: right;
+    estado = right & !timer.timeout: right;
+    estado = left & (timer.timeout & !sensor_ponte & sensor_right): right;
+    estado = espera & timer.timeout & ((!sensor_ponte & sensor_right & last = left) | (!sensor_ponte & sensor_right & !sensor_left)): right;
+
+    estado = left & timer.timeout: espera;
+    estado = right & timer.timeout: espera;
+
+    TRUE : estado;
+
+  esac;
+
+  next(sinaleira_right) :=
+  case
+    estado = espera: vermelho;
+    estado = left: vermelho;
+    estado = right: verde;
+    TRUE: sinaleira_right;
+  esac;
+
+  next(sinaleira_left) :=
+    case
+      estado = espera: vermelho;
+      estado = left: verde;
+      estado = right: vermelho;
+      TRUE: sinaleira_left;
+    esac;
+
+  next(last) :=
+    case
+      estado = left: left;
+      estado = right: right;
+      TRUE: last;
+    esac;
+
+  next(sensor_left) :=
+    case
+      estado = inicial: FALSE;
+      sensor_left = TRUE : TRUE;
+      sensor_left = FALSE : {TRUE, FALSE};
+      TRUE: sensor_left;
+    esac;
+
+  next(sensor_right) :=
+    case
+      estado = inicial: FALSE;
+      sensor_right = TRUE : TRUE;
+      sensor_right = FALSE : {TRUE, FALSE};
+      TRUE: sensor_right;
+    esac;
+
+  next(sensor_ponte) :=
+    case
+      estado = inicial: FALSE;
+      sensor_ponte = TRUE : TRUE;
+      sensor_ponte = FALSE : {TRUE, FALSE};
+      TRUE: sensor_ponte;
+    esac;
+
+
+
+---------------------------------------------------------------------------
+-- PROPRIEDADES                                                          --
+---------------------------------------------------------------------------
+-- Propriedade de segurança: nunca é o caso que ambos os semáforos são "verde" ao mesmo temp
+
+LTLSPEC -- Safety property
+G !(sinaleira_right = verde & sinaleira_left = verde)
+
+LTLSPEC -- Liveness property
+G (sinaleira_right = verde -> F !(sinaleira_right = verde)) & G (sinaleira_left = verde -> F !(sinaleira_left = verde))
+
+LTLSPEC -- West side liveness property with assumptions
+G (sensor_right -> F sinaleira_right = verde)
+
+LTLSPEC -- East side liveness property with assumptions
+G (sensor_left -> F sinaleira_left = verde)
+
+-- CTLSPEC -- West and East semaphore are eventually green
+-- EF semaforo_oeste & EF semaforo_leste
+
+-- CTLSPEC -- East semaphore can stay green forever when green and vehicle on bridge
+-- AG (semaforo_leste & sensor3 -> EG semaforo_leste)
